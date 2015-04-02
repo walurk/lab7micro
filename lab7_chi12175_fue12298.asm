@@ -1,10 +1,12 @@
 ;chi12175
 ;fue12298
 ;uvg
+;modificacion para que sea por complementos el canal rc1 y rc2
+
 LIST P=PIC16F887 ; Pic a usar
 #INCLUDE <P16F887.INC> ; Lista de etiquetas de microchip
 ; Bits de configuración. Configuran opciones externas de hardware para la programacion
-
+;pagina 210 para palabras de configuracion
 __CONFIG  _CONFIG1, _DEBUG_OFF & _LVP_OFF & _FCMEN_OFF & _IESO_OFF & _BOREN_OFF & _CPD_OFF & _CP_OFF & _MCLRE_ON & _PWRTE_OFF & _WDTE_OFF & _INTOSC
 __CONFIG  _CONFIG2, _WRT_OFF & _BOR21V
 
@@ -58,20 +60,26 @@ MOVWF STATUS_TEMP   ;SE GUARDA LO DE W(STATUS) EN STATUS_TEMP
         
 
 
-        INCF VAR, F
+        ;INCF VAR, F
         BANKSEL ADRESH            ;AQUI ESTA EL RESULTADO DE LA CONVERSION DEL ADC
         MOVF ADRESH, W              ;MOVER ADRESH A W
         ANDLW b'01111111'
         ;BANKSEL ADRESH
         ;MOVF ADRESH, W
         
-        BTFSS VAR, 0
-        GOTO VAR0
+        ;BTFSS VAR, 0
+        ;GOTO VAR0
         BANKSEL CCPR2L
         MOVWF CCPR2L
         ;MOVWF INFORC1
-        GOTO POP
-        VAR0:
+        ;GOTO POP
+        ;VAR0:
+
+        BANKSEL ADRESH
+        MOVF ADRESH, W
+        SUBLW b'11111111'
+        ANDLW b'01111111'
+
         BANKSEL CCPR1L
         MOVWF CCPR1L
         ;MOVWF INFORC2
@@ -337,7 +345,7 @@ MAIN:
     NOP
     NOP
 
-    CALL CAMBIOCANAL
+    ;CALL CAMBIOCANAL
 
     ;CALL ENVIO
 
