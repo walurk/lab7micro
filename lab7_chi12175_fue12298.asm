@@ -1,6 +1,6 @@
 ;chi12175
 ;fue12298
-
+;uvg
 LIST P=PIC16F887 ; Pic a usar
 #INCLUDE <P16F887.INC> ; Lista de etiquetas de microchip
 ; Bits de configuración. Configuran opciones externas de hardware para la programacion
