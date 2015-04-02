@@ -1,0 +1,409 @@
+;chi12175
+;fue12298
+
+LIST P=PIC16F887 ; Pic a usar
+#INCLUDE <P16F887.INC> ; Lista de etiquetas de microchip
+; Bits de configuración. Configuran opciones externas de hardware para la programacion
+
+__CONFIG  _CONFIG1, _DEBUG_OFF & _LVP_OFF & _FCMEN_OFF & _IESO_OFF & _BOREN_OFF & _CPD_OFF & _CP_OFF & _MCLRE_ON & _PWRTE_OFF & _WDTE_OFF & _INTOSC
+__CONFIG  _CONFIG2, _WRT_OFF & _BOR21V
+
+
+;VARIABLES
+UDATA_SHR
+VAR RES 1           ;VARIABLE PARA GUARDAR EL VOLTAJE DE REFRENCIA POR USUARIO
+W_TEMP   RES 1      ;VARIABLE PARA ALMACENAR TEMPORALMENTE EL REGISTRO W
+STATUS_TEMP RES 1   ;VARVARIABLE PARA ALMACENAR TEMPORALMENTE EL STATUS
+
+CTOTAL RES 1        ;VARIABLE PARA ALMACENAR VALOR DE ADC DE ADRESH
+NIBBLEH   RES 1     ;VARIABLE PARA ALMACENAR NIBBLE HIGH DE CTOTAL
+NIBBLEL   RES 1     ;VARIABLE PARA ALMACENAR NIBBLE LOW DE CTOTAL
+ESPERAR RES 1       ;VARIABLE QUE GUARDARA LA CANTIDAD DE OVERFLOW QUE HAN PASADO
+TRAREG  RES 1       ;VARIABLE QUE LEE SUBRUTINA TRANSFORMADOR
+
+ESTADO RES 1        ;VARIABLE PARA SABER SI UN BOTON SE APACHO
+INFO RES 1
+
+CONTADOR  RES 1     ;VARIABLE PARA CONTADOR DE LA PROTECCION DE BOTONES RUIDO
+BANDERAS RES 1      ;VARIABLE PARA CONTADOR DE LA PROTECCION CONTRA RUIDO EN BOTONES
+INFORC1 RES 1
+INFORC2 RES 1
+
+ORG 0x0000
+GOTO INIT
+
+
+
+;***********************************************************************************
+;ESPACIO DE INTERRUPCION
+;***********************************************************************************
+ORG 0x0004
+MOVWF W_TEMP        ;GUARDO W EN W_TEMP
+SWAPF STATUS, W     ;SWAP A STATUS PARA QUE SE GUARDE EN W
+                    ;SE USA SWAPS PORQUE NO AFECTAN EL BIT STATUS
+MOVWF STATUS_TEMP   ;SE GUARDA LO DE W(STATUS) EN STATUS_TEMP
+
+;ISR CODIGO DEL USUARIO
+;***********************************************************************************
+
+
+        ;BANKSEL PIR1
+        ;BTFSS PIR1, ADIF          ;VERIFICAR SI YA TERMINO EL ADC
+        ;GOTO POP
+        
+        ;MOVWF INFO
+
+        ;BANKSEL PORTD
+        ;MOVWF PORTD            ;MOVER DE W(ADRESH) A PUERTD
+        
+
+
+        INCF VAR, F
+        BANKSEL ADRESH            ;AQUI ESTA EL RESULTADO DE LA CONVERSION DEL ADC
+        MOVF ADRESH, W              ;MOVER ADRESH A W
+        ANDLW b'01111111'
+        ;BANKSEL ADRESH
+        ;MOVF ADRESH, W
+        
+        BTFSS VAR, 0
+        GOTO VAR0
+        BANKSEL CCPR2L
+        MOVWF CCPR2L
+        ;MOVWF INFORC1
+        GOTO POP
+        VAR0:
+        BANKSEL CCPR1L
+        MOVWF CCPR1L
+        ;MOVWF INFORC2
+;***********************************************************************************
+POP:
+BANKSEL ADCON0
+BSF ADCON0, 1             ;VOLVEMOS A INICAR EL ADC
+SWAPF STATUS_TEMP, W   ;SE PASA STATUS_TEMP AL REGISTRO W
+MOVWF STATUS        ;SE PASA DEL W(STATUS_TEMP) AL REGISTRO STATUS
+SWAPF W_TEMP, F     ;LE DOY VUELTA A W_TEMP
+SWAPF W_TEMP, W     ;SE REGRESA W_TEMP A REGISTRO W
+
+BANKSEL INTCON
+BCF INTCON, T0IF    ;SE APAGA BANDERA OVERFLOW DEL TIMER0,
+                    ;NO USAR BANKSEL PORQUE INTCON ESTA EN TODOS LOS BANKS
+BANKSEL PIR1
+BCF PIR1, ADIF    ;LIMPIAR POR SOFTWARE LA BANDERA DEL ADC DE QUE TERMINO
+RETFIE
+;***********************************************************************************
+
+
+
+INIT:
+
+    BANKSEL OSCCON          ;ME UBICO EN BANK DE OSCCON
+    BSF OSCCON, IRCF2
+    BSF OSCCON, IRCF1
+    BSF OSCCON, IRCF0       ;SE ELIGE 8MHZ
+
+    BSF OSCCON, OSTS        ;TRABAJAR SEGUN FOSC EN CONFIG1
+
+    BSF OSCCON, HTS         ;SE DEFINE STABLE EL HIGH INTERNAL FREQUENZY OSCILLATOR
+    BSF OSCCON, LTS         ;SE DEFINE STABLE EL LOW INTERNAL FREQUENZY OSCILLATOR
+
+    BCF OSCCON, SCS         ;SE DEFINE  RELOJ DE TRABAJO SEGUND FOSC EN CONFIG
+
+    BANKSEL OPTION_REG      ;UBICARSE EN BANK PARA MODIFICAR OPTIONREG
+    BSF OPTION_REG, NOT_RBPU    ;DESACTIVAR PULLUPS EN PORTB
+    BCF OPTION_REG, T0CS    ;HABILITAR PARA CICLO INTERNO DE INSTRUCCIONES
+    BCF OPTION_REG, PSA     ;SE ASIGNA PRESCALER A TMR0
+
+    BSF OPTION_REG, PS2
+    BSF OPTION_REG, PS1
+    BCF OPTION_REG, PS0     ;CONFIGURAR PREESCALER A 128
+
+
+    ;****************************************************************************
+    ;CONFIGURACION DE INTERRUPCIONES
+    BANKSEL INTCON          ;HUBICARSE PARA TRABAJAR EN INTCON,
+                            ;NO ES NECESARIO, EL INTCON ESTA EN TODOS LOS BANCOS
+    BSF INTCON, GIE         ;HABILITAR TODAS LAS INTERRUPCIONES
+    BCF INTCON, INTE        ;DESHABILITAR INTERRUPCIONES DE INT EXTERNOS???
+    BCF INTCON, RBIE        ;DESHABILITAR INTERRUPCIONES DE PORTB
+
+    BSF INTCON, PEIE        ;HABILITAR INTERRUPCIONES DE PERIFERICOS
+    BSF INTCON, T0IE        ;HABILITAR INTERRUPCIONES DE TMR0
+    ;****************************************************************************
+
+
+
+    ;****************************************************************************
+    ;CONFIGURAR ADC
+    ;****************************************************************************
+    ;PUERTOS
+    BANKSEL ANSEL           ;IR A BANCO DE ANSEL
+    BSF ANSEL, ANS4         ;RA5 COMO ENTRADA ANALOGICA
+    BCF ANSEL, ANS5         ;RE0 COMO ENTRADA/SALIDA DITIGAL
+    BCF ANSEL, ANS6         ;RE1 COMO ENTRADA/SALIDA DIGITAL
+    BCF ANSEL, ANS7         ;RE2 COMO ENTRADA/SALIDA DIGITAL
+    BCF ANSEL, ANS0         ;RA0 COMO ENTRADA/SALIDA DIGITAL
+    BCF ANSEL, ANS1         ;RA1 COMO ENTRADA/SALIDA DIGITAL
+    BCF ANSEL, ANS2         ;RA2 COMO ENTRADA ANALOGICA
+    BSF ANSEL, ANS3         ;RA3 COMO ENTRADA ANALOGICA
+
+    BANKSEL TRISA
+    BSF TRISA, RA5          ;RA5 COMO ENTRADA
+    BCF TRISA, RA0          ;RA0 COMO SALIDA DIGITAL
+    BCF TRISA, RA1          ;RA1 COMO SALIDA DIGITAL
+    BCF TRISA, RA2          ;RA2 COMO SALIDA DIGITAL
+    BSF TRISA, RA3          ;RA3 COMO ENTRADA
+
+    BANKSEL TRISE           ;IR A BANCO DE TRISC
+    BSF TRISE, RE0          ;RE0 COMO ENTRADA DIGITAL
+    BSF TRISE, RE1          ;RE0 COMO ENTRADA DIGITAL
+    BCF TRISE, RE2          ;RE0 COMO SALIDA DIGITAL
+
+    BANKSEL TRISC
+    CLRF TRISC              ;LIMPIAR EL PUERTO C, TODO PUERTO C ES SALIDA
+
+    ;CANAL
+    BANKSEL ADCON0          ;IR A BANCO DE ADCON0, ANS4 COMO CANAL DE ENTRADA
+    BCF ADCON0, 5
+    BSF ADCON0, 4
+    BCF ADCON0, 3
+    BCF ADCON0, 2           ;SE SELECCIONA QUE EL ANS4 SEA EL CANAL DEL ADC
+
+
+    ;VOLTAJE DE REFERENCIA
+    BANKSEL ADCON1
+    BCF ADCON1, VCFG0       ;VDD COMO REFERENCIA
+    BCF ADCON1, VCFG1       ;VSS COMO REFERENCIA
+
+    ;RELOJ DE ADC
+    BANKSEL ADCON0
+    BSF ADCON0, ADCS1
+    BSF ADCON0, ADCS0       ;RELOJ INTERNO PARA EL ADC
+
+    ;INTERRUPCIONES
+    BANKSEL PIE1
+    BSF PIE1, ADIE          ;HABILITO INTERRUPCION DE ADC
+
+
+    ;FORMATO DE SALIDA
+    BANKSEL ADCON1
+    BCF ADCON1, ADFM        ;JUSTIFICACION IZQUIERDA
+    CLRF ADCON1                        ;BITS 10-2 EN ADRESH
+    ;****************************************************************************
+
+
+    BANKSEL TMR0            ;CONFIGURAR VALOR INCIAL DE TMR0
+    MOVLW .101
+    MOVWF TMR0
+
+    BANKSEL TRISD           ;PUERTO D CABLEADO FISICAMENTE A 7SEGMENTOS
+    CLRF TRISD              ;TODO EL PUERTO D SERA SALIDA,
+
+    BANKSEL ANSELH
+    BCF ANSELH, ANS12
+
+    BANKSEL TRISB
+    CLRF TRISB
+    ;LIMPIEZA DE VARIABLES
+    CLRF VAR
+    BANKSEL PORTA
+    CLRF PORTA
+    BANKSEL PORTE
+    CLRF PORTE
+    BANKSEL PORTD           ;SE LIMPIAN PUEROS
+    CLRF PORTD
+    BANKSEL PORTB
+    CLRF PORTB
+    BANKSEL PORTC
+    CLRF PORTC
+
+
+;**********************************************************************************
+    ;CONFIGURACION DE PWM, USAR RC1 PORQUE ES CCP2
+    ;****************************************************************************************
+    BANKSEL TRISC
+    ;BSF TRISC, RC1              ;CCP2 COMO ENTRADA
+
+    BANKSEL PR2
+    MOVLW .124
+    MOVWF PR2                   ;CALCULADO PARA 1MS DE PERIODO
+
+    BANKSEL CCP2CON
+    MOVLW b'00001100'
+    MOVWF CCP2CON               ;CONFIGURAR PWM EN MODULO CCP2
+
+    ;CONFIGURACION DE CICLO DE TRABAJO,
+    ;ADRESL A CCP2CON(5:4)  SOLO LOS 2 BITS MAS SIGNIFICATIVOS DE ADRESL
+    ;ADRESH A CCPR2L, PERO SOLO MOVER LO 7 BITS, EL 8 DEJARLO SIEMPRE EN CERO
+    BANKSEL ADRESL
+    MOVF ADRESL, W
+    RRF W, W
+    RRF W, W
+    ANDLW b'00110000'
+    MOVWF INFO
+
+
+    ;MOVLW b'1100'
+    ;ADDWF INFO, W             ;COMO SOLO BITS(7:6) DEL ADRESL ESTAN USANDOSE,
+                                ;SE SUMAN A LA CONFIGURACION DEL CCP2CON
+    ;BANKSEL CCP2CON
+    ;MOVWF CCP2CON
+
+    BANKSEL ADRESH
+    MOVF ADRESH, W
+    ANDLW b'01111111'           ;AND PARA ELMINAR EL ULTIMO BIT, ASI MAXIMO ES 500 APROX
+    BANKSEL CCPR2L
+    MOVWF CCPR2L
+
+    BANKSEL PIR1
+    BCF PIR1, TMR2IF            ;LIMPIO BANDERA DE TMR2
+
+    BANKSEL T2CON               ;CONFIGURAION DE TMR2
+    BSF T2CON, 1                ;ACTIVO PRESCALER DE 16
+
+    ;INICIAR EL TMR2
+    BANKSEL T2CON
+    BSF T2CON, TMR2ON       ;ENCENDER EL TMR2
+    BSF T2CON, 2
+
+    ;ASDF:
+    ;BANKSEL PIR1
+    ;BTFSS PIR1, TMR2IF           ;VERIFICO SI BANDERA DE TMR2=PR2
+    ;GOTO ASDF
+    ;BCF PIR1, TMR2IF
+    ;BANKSEL TRISC
+    ;BCF TRISC, RC1              ;HABILITO COMO SALIDA EN RC1
+    ;***************************************************************************************
+
+
+    ;***********************************************************************
+    ;CONFIGURACION PWM, USAR RC2 POR CCP1
+    ;***********************************************************************
+    ;LOS VALORES DE PR Y PRESCALER DE TMR2 SON IGUALES,
+    ;DE ESTA FORMA SE TIENE LA MISMA FRECUENCIA PERO AL MODIFICAR LOS
+    ;CCPR1L Y EL CCP1CON(5:4) SE MODIFICA EL CICLO DE TRABAJO DE SENIAL EN RC2
+    BANKSEL CCP1CON
+    MOVLW b'00001100'
+    MOVWF CCP1CON
+
+    
+    BANKSEL ADRESL
+    MOVF ADRESL, W
+    RRF W, W
+    RRF W, W
+    ANDLW b'00110000'
+    MOVWF INFO
+
+
+    MOVLW b'1100'
+    ADDWF INFO, W             ;COMO SOLO BITS(7:6) DEL ADRESL ESTAN USANDOSE,
+                                ;SE SUMAN A LA CONFIGURACION DEL CCP1CON
+    ;BANKSEL CCP1CON
+    ;MOVWF CCP1CON
+
+    BANKSEL ADRESH
+    MOVF ADRESH, W
+    ANDLW b'01111111'           ;AND PARA ELMINAR EL ULTIMO BIT, ASI MAXIMO ES 500 APROX
+    BANKSEL CCPR1L
+    MOVWF CCPR1L
+
+
+    ;***************************************************************************
+
+
+
+    ;INICIAR EL ADC
+    BANKSEL ADCON0
+    BSF ADCON0, ADON        ;ENCENDEMOS EL ADC
+    BSF ADCON0, 1           ;INICI EL PRIMER CICLO DE ONVSRESOIN
+
+    ;*********************************************************************************
+    CLRF CONTADOR
+    CLRF BANDERAS
+    CLRF VAR
+    CLRF CTOTAL
+    CLRF ESPERAR
+    CLRF NIBBLEH
+    CLRF ESTADO
+    CLRF NIBBLEL
+    CLRF TRAREG         ;LIMPIAR TODAS LA VARIABLES QUE SE UTILIZARAN EN EL PROGRAMA
+    CLRF INFORC1
+    CLRF INFORC2
+    ;*****************************************************************************************
+
+MAIN:
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
+
+    CALL CAMBIOCANAL
+
+    ;CALL ENVIO
+
+
+    GOTO MAIN
+
+;****************************************************************************************
+;CAMBIOCANAL: CAMBIAR EL CANAL POR DONDE LEE EL MODULO DE ADC, ENTRE ANS4-ANS3, O SEA RA5-RA3
+;****************************************************************************************
+CAMBIOCANAL
+    BANKSEL INTCON
+    BSF INTCON, PEIE        ;DESHABILTIAR INTERRUPCIONES DE PERIFERICOS
+
+    BTFSS VAR, 0            ;VERIFICO BIT  DE VARIABLE VAR
+    GOTO PIN3
+
+    BANKSEL ADCON0          ;IR A BANCO DE ADCON0, ANS4 COMO CANAL DE ENTRADA
+    BCF ADCON0, 5
+    BSF ADCON0, 4
+    BCF ADCON0, 3
+    BCF ADCON0, 2           ;SE SELECCIONA QUE EL ANS4 SEA EL CANAL DEL ADC
+
+    BANKSEL INTCON
+    BSF INTCON, PEIE
+    RETURN
+
+    PIN3:
+    BANKSEL ADCON0          ;IR A BANCO DE ADCON0, ANS3 COMO CANAL DE ENTRADA
+    BCF ADCON0, 5
+    BCF ADCON0, 4
+    BSF ADCON0, 3
+    BSF ADCON0, 2           ;SE SELECCIONA QUE EL ANS3 SEA EL CANAL DEL ADC
+
+    BANKSEL INTCON
+    BSF INTCON, PEIE
+
+
+    RETURN
+;****************************************************************************************
+
+
+;*****************************************************************************************
+;ENVIO: SUBRUTINA QUE ENVIA LOS VALORES DE LAS CONVERSIONES A LOS RESPECIVOS
+;CCPR1L O CCPR2L
+;****************************************************************************************
+ENVIO:
+        BTFSS VAR, 0
+        GOTO VAR00
+
+        MOVF INFORC1, W
+        ANDLW B'01111111'
+        BANKSEL CCPR2L
+        MOVWF CCPR2L                ;VAR=1 ANS4, RA5, CCPR2L,RC1
+
+        RETURN 
+
+
+
+
+        VAR00:
+        MOVF INFORC2, W
+        ANDLW b'01111111'
+        BANKSEL CCPR1L
+        MOVWF CCPR1L                ;VAR=0 AND3, RA3, CCPR1L,RC2
+
+        RETURN 
+;******************************************************************************************
+
+    END
